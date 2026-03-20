@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: DungeonVault4e
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 0%
+  selector:
+    matchLabels:
+      app: DungeonVault4e
+  template:
+    metadata:
+      labels:
+        app: DungeonVault4e
+        version: v1
+    spec:
+      containers:
+        - name: DungeonVault4e
+          image: ${docker-registry}/DungeonVault4e:${tag}
+          ports:
+            - containerPort: 80
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              scheme: HTTP
+              path: /
+              port: 80
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              scheme: HTTP
+              path: /
+              port: 80
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 1
+          env:
+            - name: JWT_CERTIFICATE
+              valueFrom:
+                secretKeyRef:
+                  key: tls.crt
+                  name: DungeonVault4e-tls-secret
+            - name: JWT_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: tls.key
+                  name: DungeonVault4e-tls-secret
+          resources:
+            limits:
+              cpu: 500m
+              memory: 200Mi
+            requests:
+              cpu: 500m
+              memory: 200Mi
+          imagePullPolicy: Always
+      imagePullSecrets:
+        - name: regcred

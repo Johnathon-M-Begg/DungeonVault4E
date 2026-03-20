@@ -1,0 +1,57 @@
+definitions:
+  steps:
+    - step: &snyk-checks
+        name: Snyk Checks
+        image: node:23.6.1-alpine
+        caches:
+          - node
+        services:
+          - docker
+        script:
+          - docker build -t DungeonVault4e .
+          - npm install -g snyk
+          - snyk auth $SNYK_API_KEY
+          - snyk test --severity-threshold=high
+          - snyk code test --severity-threshold=high
+          - snyk container test --severity-threshold=high DungeonVault4e
+          - snyk iac test --severity-threshold=high
+          - snyk sbom --format=cyclonedx1.5+json --json-file-output=sbom.json
+          - snyk monitor --project-name=DungeonVault4e
+        artifacts:
+          - sbom.json
+    - step: &build-run-tests
+        name: Build and Run Tests
+        image: node:23.6.1-alpine
+        caches:
+          - node
+        script:
+          - npm install
+          - npm audit --audit-level=high --omit=dev
+          - npm run format:check
+          - npm run lint:check
+          - npm run build
+          - npm run test
+    - step: &upload-sbom
+        name: Upload SBOM Report
+        script:
+          - mkdir DungeonVault4e
+          - mv sbom.json DungeonVault4e/DungeonVault4e-${BITBUCKET_BRANCH#*/}.json
+          - pipe: atlassian/google-cloud-storage-deploy:2.2.0
+            variables:
+              KEY_FILE: $SBOM_SA_KEY
+              PROJECT: $SBOM_PROJECT
+              BUCKET: $SBOM_BUCKET
+              SOURCE: DungeonVault4e
+              EXTRA_ARGS: '-r'
+
+pipelines:
+  default:
+    - parallel:
+        - step: *snyk-checks
+        - step: *build-run-tests
+  pull-requests:
+    release/*:
+      - parallel:
+          - step: *snyk-checks
+          - step: *build-run-tests
+      - step: *upload-sbom
